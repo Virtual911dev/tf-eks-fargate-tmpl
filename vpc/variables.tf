@@ -18,6 +18,10 @@ variable "private_subnets" {
   description = "List of private subnets"
 }
 
+variable "private_subnets_db" {
+  description = "List of private subnets"
+}
+
 variable "availability_zones" {
   description = "List of availability zones"
 }

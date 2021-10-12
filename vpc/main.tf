@@ -1,4 +1,4 @@
-/* IMPORTANT: https://docs.aws.amazon.com/eks/latest/userguide/network_reqs.html */
+
 
 resource "aws_vpc" "main" {
   cidr_block           = var.cidr
@@ -22,23 +22,21 @@ resource "aws_internet_gateway" "main" {
 }
 
 resource "aws_nat_gateway" "main" {
-  count         = length(var.private_subnets)
-  allocation_id = element(aws_eip.nat.*.id, count.index)
-  subnet_id     = element(aws_subnet.public.*.id, count.index)
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[1].id
   depends_on    = [aws_internet_gateway.main]
 
   tags = {
-    Name        = "${var.name}-${var.environment}-nat-${format("%03d", count.index+1)}"
+    Name        = "${var.name}-${var.environment}-nat-01"
     Environment = var.environment
   }
 }
 
 resource "aws_eip" "nat" {
-  count = length(var.private_subnets)
   vpc = true
 
   tags = {
-    Name        = "${var.name}-${var.environment}-eip-${format("%03d", count.index+1)}"
+    Name        = "${var.name}-${var.environment}-eip-01"
     Environment = var.environment
   }
 }
@@ -57,6 +55,42 @@ resource "aws_subnet" "private" {
   }
 }
 
+resource "aws_subnet" "private_db" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = element(var.private_subnets_db, count.index)
+  availability_zone = element(var.availability_zones, count.index)
+  count             = length(var.private_subnets_db)
+
+  tags = {
+    Name                                                   = "${var.name}-${var.environment}-private-db-subnet-${format("%03d", count.index+1)}",
+    Environment                                            = var.environment
+  }
+}
+
+resource "aws_route_table" "private_db" {
+  count  = length(var.private_subnets_db)
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name        = "${var.name}-${var.environment}-routing-table-private-db-${format("%03d", count.index+1)}"
+    Environment = var.environment
+  }
+}
+/*
+resource "aws_route" "private_db" {
+  route_table_id         = element(aws_route_table.private_db.*.id, 0)
+  gateway_id             = aws_internet_gateway.main.id
+  for_each = toset(["108.7.180.236/32", "108.20.79.222/32", "73.38.182.189/32", "83.103.155.177/32"])
+  destination_cidr_block           = "${each.key}"
+}
+
+resource "aws_route" "private_db-1" {
+  route_table_id         = element(aws_route_table.private_db.*.id, 1)
+  gateway_id             = aws_internet_gateway.main.id
+  for_each = toset(["108.7.180.236/32", "108.20.79.222/32", "73.38.182.189/32", "83.103.155.177/32"])
+  destination_cidr_block           = "${each.key}"
+}
+*/
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = element(var.public_subnets, count.index)
@@ -101,7 +135,7 @@ resource "aws_route" "private" {
   count                  = length(compact(var.private_subnets))
   route_table_id         = element(aws_route_table.private.*.id, count.index)
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = element(aws_nat_gateway.main.*.id, count.index)
+  nat_gateway_id         = aws_nat_gateway.main.id
 }
 
 resource "aws_route_table_association" "private" {
@@ -115,7 +149,7 @@ resource "aws_route_table_association" "public" {
   subnet_id      = element(aws_subnet.public.*.id, count.index)
   route_table_id = aws_route_table.public.id
 }
-
+/*
 resource "aws_flow_log" "main" {
   iam_role_arn    = aws_iam_role.vpc-flow-logs-role.arn
   log_destination = aws_cloudwatch_log_group.vpc.arn
@@ -176,7 +210,7 @@ resource "aws_iam_role_policy" "vpc-flow-logs-policy" {
 }
 EOF
 }
-
+*/
 output "id" {
   value = aws_vpc.main.id
 }
@@ -187,4 +221,7 @@ output "public_subnets" {
 
 output "private_subnets" {
   value = aws_subnet.private
+}
+output "private_subnets_db" {
+  value = aws_subnet.private_db
 }

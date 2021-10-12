@@ -1,8 +1,3 @@
-/*
- For demo purposes we deploy a small app using the kubernetes_ingress ressource
- and a fargate profile
-*/
-
 
 resource "aws_iam_role_policy_attachment" "AmazonEKSFargatePodExecutionRolePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
@@ -43,7 +38,11 @@ resource "aws_eks_fargate_profile" "main" {
   }
 
   selector {
-    namespace = "2048-game"
+    namespace = "kube-system"
+  }
+
+  selector {
+    namespace = "lynx-micro"
   }
 
   timeouts {
@@ -51,49 +50,64 @@ resource "aws_eks_fargate_profile" "main" {
     delete = "60m"
   }
 }
+/*
+resource "null_resource" "resetdns" {
+ 
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    environment = {
+      KUBECONFIG = pathexpand("~/.kube/config")
+    }
+    command = <<EOT
+      kubectl  patch deployment/coredns  --namespace kube-system   --type=json   -p='[{"op": "remove", "path": "/spec/template/metadata/annotations", "value": "eks.amazonaws.com/compute-type"}]'
+    EOT
+  }
+}
+*/
 
 resource "kubernetes_namespace" "example" {
   metadata {
     labels = {
-      app = "2048"
+      app = "lynx-app"
     }
 
-    name = "2048-game"
+    name = "lynx-micro"
   }
 }
 
 resource "kubernetes_deployment" "app" {
   metadata {
-    name      = "deployment-2048"
-    namespace = "2048-game"
+    name      = "lynx-app"
+    namespace = "lynx-micro"
     labels    = {
-      app = "2048"
+      app = "lynx-app"
     }
   }
 
   spec {
-    replicas = 2
+    replicas = 1
 
     selector {
       match_labels = {
-        app = "2048"
+        app = "lynx-app"
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "2048"
+          app = "lynx-app"
         }
       }
 
       spec {
         container {
-          image = "alexwhen/docker-2048"
-          name  = "2048"
+          image = "661199018908.dkr.ecr.us-east-2.amazonaws.com/lynx-fh:v1"
+          name  = "lynx-app"
 
           port {
-            container_port = 80
+            container_port = 8080
           }
         }
       }
@@ -105,17 +119,17 @@ resource "kubernetes_deployment" "app" {
 
 resource "kubernetes_service" "app" {
   metadata {
-    name      = "service-2048"
-    namespace = "2048-game"
+    name      = "service-1"
+    namespace = "lynx-micro"
   }
   spec {
     selector = {
-      app = "2048"
+      app = "lynx-app"
     }
 
     port {
-      port        = 80
-      target_port = 80
+      port        = 8080
+      target_port = 8080
       protocol    = "TCP"
     }
 
@@ -127,15 +141,15 @@ resource "kubernetes_service" "app" {
 
 resource "kubernetes_ingress" "app" {
   metadata {
-    name      = "2048-ingress"
-    namespace = "2048-game"
+    name      = "lynx-ingress"
+    namespace = "lynx-micro"
     annotations = {
       "kubernetes.io/ingress.class"           = "alb"
       "alb.ingress.kubernetes.io/scheme"      = "internet-facing"
       "alb.ingress.kubernetes.io/target-type" = "ip"
     }
     labels = {
-        "app" = "2048-ingress"
+        "app" = "lynx-ingress"
     }
   }
 
@@ -145,8 +159,8 @@ resource "kubernetes_ingress" "app" {
         path {
           path = "/*"
           backend {
-            service_name = "service-2048"
-            service_port = 80
+            service_name = "service-1"
+            service_port = 8080
           }
         }
       }
